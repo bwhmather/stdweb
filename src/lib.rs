@@ -230,6 +230,8 @@ pub mod web {
     pub use webapi::token_list::TokenList;
     pub use webapi::node_list::NodeList;
     pub use webapi::string_map::StringMap;
+    pub use webapi::crypto::Crypto;
+    pub use webapi::crypto::SubtleCrypto;
     pub use webapi::storage::Storage;
     pub use webapi::location::Location;
     pub use webapi::array_buffer::ArrayBuffer;

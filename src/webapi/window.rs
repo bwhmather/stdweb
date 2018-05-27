@@ -3,6 +3,7 @@ use webcore::try_from::TryInto;
 use webapi::event_target::{IEventTarget, EventTarget};
 use webapi::window_or_worker::IWindowOrWorker;
 use webapi::storage::Storage;
+use webapi::crypto::Crypto;
 use webapi::location::Location;
 use webapi::history::History;
 use webcore::once::Once;
@@ -92,6 +93,20 @@ impl Window {
         unsafe {
             js!(
                 return @{self.as_ref()}.sessionStorage;
+            ).into_reference_unchecked().unwrap()
+        }
+    }
+
+    /// Returns a [Location](struct.Location.html) object which contains
+    /// information about the URL of the document and provides methods
+    /// for changing that URL and loading another URL.
+    ///
+    /// [(JavaScript docs)](https://developer.mozilla.org/en-US/docs/Web/API/Window/location)
+    // https://html.spec.whatwg.org/#the-window-object:dom-location
+    pub fn crypto( &self ) -> Crypto {
+        unsafe {
+            js!(
+                return @{self}.crypto;
             ).into_reference_unchecked().unwrap()
         }
     }

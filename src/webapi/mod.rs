@@ -16,6 +16,7 @@ pub mod text_node;
 pub mod node_list;
 pub mod string_map;
 pub mod location;
+pub mod crypto;
 pub mod storage;
 pub mod blob;
 pub mod file;
