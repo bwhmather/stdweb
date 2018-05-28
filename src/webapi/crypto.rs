@@ -1,5 +1,7 @@
 use webapi::typed_array::{TypedArray, ArrayKind};
-use webcore::value::Reference;
+use webcore::value::{Reference, Value, ConversionError};
+use webcore::try_from::{TryFrom, TryInto};
+use webcore::promise::Promise;
 
 
 /// https://www.w3.org/TR/WebCryptoAPI/#dfn-Crypto
@@ -8,6 +10,7 @@ use webcore::value::Reference;
 pub struct Crypto(Reference);
 
 
+#[allow(missing_docs)]
 impl Crypto {
     pub fn get_random_values<T: ArrayKind>(&self, array_buffer: &TypedArray<T>) {
         js!( @(no_return) @{self}.getRandomValues(@{array_buffer}); );
@@ -16,12 +19,13 @@ impl Crypto {
     pub fn subtle(&self) -> SubtleCrypto {
         unsafe {
             js!(
-                return @{self}.crypto;
+                return @{self}.subtle;
             ).into_reference_unchecked().unwrap()
         }
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum KeyType {
     Public,
     Private,
@@ -32,17 +36,33 @@ impl TryFrom<Value> for KeyType {
     type Error = ConversionError;
 
     fn try_from(v: Value) -> Result<KeyType, ConversionError> {
-        match v.try_into()? {
-            "public" => Ok(KeyType::Public),
-            "private" => Ok(KeyType::Private),
-            "secret" => Ok(KeyType::Secret),
-            other => Err(ConversionError::Custom(format!("Unknown key type: {}", other)))
+        if let Some(string) = v.as_str() {
+            match string {
+                "public" => Ok(KeyType::Public),
+                "private" => Ok(KeyType::Private),
+                "secret" => Ok(KeyType::Secret),
+                _ => Err(ConversionError::Custom(format!("Unknown key type: {}", string)))
+            }
+        } else {
+            Err(ConversionError::Custom("Value for key type must be a string".to_string()))
         }
     }
 }
 
 
-enum KeyUsage {
+impl<'a> Into<Value> for &'a KeyType {
+    fn into(self: Self) -> Value {
+        match self {
+            KeyType::Public => "public",
+            KeyType::Private => "private",
+            KeyType::Secret => "secret",
+        }.into()
+    }
+}
+
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum KeyUsage {
     Encrypt,
     Decrypt,
     Sign,
@@ -57,19 +77,40 @@ enum KeyUsage {
 impl TryFrom<Value> for KeyUsage {
     type Error = ConversionError;
 
-    fn try_from(v: Value) -> Result<KeyUsage> {
-        match v.try_into()? {
-            "encrypt" => Ok(KeyUsage::Encrypt),
-            "decrypt" => Ok(KeyUsage::Decrypt),
-            "sign" => Ok(KeyUsage::Sign),
-            "verify" => Ok(KeyUsage::Verify),
-            "deriveKey" => Ok(KeyUsage::DeriveKey),
-            "deriveBits" => Ok(KeyUsage::DeriveBits),
-            "wrapKey" => Ok(KeyUsage::WrapKey),
-            "unwrapKey" => Ok(KeyUsage::UnwrapKey),
+    fn try_from(v: Value) -> Result<KeyUsage, ConversionError> {
+        if let Some(string) = v.as_str() {
+            match string {
+                "encrypt" => Ok(KeyUsage::Encrypt),
+                "decrypt" => Ok(KeyUsage::Decrypt),
+                "sign" => Ok(KeyUsage::Sign),
+                "verify" => Ok(KeyUsage::Verify),
+                "deriveKey" => Ok(KeyUsage::DeriveKey),
+                "deriveBits" => Ok(KeyUsage::DeriveBits),
+                "wrapKey" => Ok(KeyUsage::WrapKey),
+                "unwrapKey" => Ok(KeyUsage::UnwrapKey),
+                _ => Err(ConversionError::Custom(format!("Unknown key usage: {}", string)))
+            }
+        } else {
+            Err(ConversionError::Custom("Value for key usage must be a string".to_string()))
         }
     }
 }
+
+impl<'a> Into<Value> for &'a KeyUsage {
+    fn into(self: Self) -> Value {
+        match self {
+            KeyUsage::Encrypt => "encrypt",
+            KeyUsage::Decrypt => "decrypt",
+            KeyUsage::Sign => "sign",
+            KeyUsage::Verify => "verify",
+            KeyUsage::DeriveKey => "deriveKey",
+            KeyUsage::DeriveBits => "deriveBits",
+            KeyUsage::WrapKey => "wrapKey",
+            KeyUsage::UnwrapKey => "unwrapKey",
+        }.into()
+    }
+}
+
 
 
 /// https://www.w3.org/TR/WebCryptoAPI/#dfn-SubtleCrypto
@@ -79,134 +120,145 @@ pub struct CryptoKey(Reference);
 
 
 impl CryptoKey {
-    pub fn type(&self) -> KeyType {
-
+    pub fn key_type(&self) -> KeyType {
+        js!( return @{self}.type; ).try_into().unwrap()
     }
 
     pub fn extractable(&self) -> bool {
-
+        js!( return @{self}.extractable; ).try_into().unwrap()
     }
 
     pub fn algorithm(&self) -> Value {
-
+        js!( return @{self}.algorithm; )
     }
 
     pub fn usages(&self) -> Vec<KeyUsage> {
-
+        js!( return @{self}.usages; ).try_into().unwrap()
     }
 }
 
-
-pub trait KeyedAlgorithm: Copy + Into<Value> {}
-impl KeyedAlgorithm for &str {}
+pub trait KeyedAlgorithm: Into<Value> {}
+impl KeyedAlgorithm for &'static str {}
 impl KeyedAlgorithm for Value {}
 
-
-pub trait EncryptAlgorithm: Copy + Into<Value> {}
-impl EncryptAlgorithm for &str {}
+pub trait EncryptAlgorithm: Into<Value> {}
+impl EncryptAlgorithm for &'static str {}
 impl EncryptAlgorithm for Value {}
 
-
-pub trait SignAlgorithm: Copy + Into<Value> {}
-impl SignAlgorithm for &str {}
+pub trait SignAlgorithm: Into<Value> {}
+impl SignAlgorithm for &'static str {}
 impl SignAlgorithm for Value {}
 
+pub trait DigestAlgorithm: Into<Value> {}
+impl DigestAlgorithm for &'static str {}
+impl DigestAlgorithm for Value {}
 
-pub trait DeriveAlgorithm: Copy + Into<Value> {}
-impl DeriveAlgorithm for &str {}
+pub trait DeriveAlgorithm: Into<Value> {}
+impl DeriveAlgorithm for &'static str {}
 impl DeriveAlgorithm for Value {}
-
-
-pub trait SerializableAlgorithm: Copy + Into<Value> {}
-impl SerializableAlgorithm for &str {}
-impl SerializableAlgorithm for Value {}
-
 
 /// https://www.w3.org/TR/WebCryptoAPI/#dfn-SubtleCrypto
 #[derive(Clone, Debug, PartialEq, Eq, ReferenceType)]
 #[reference(instance_of = "Crypto")]
 pub struct SubtleCrypto(Reference);
 
+#[allow(missing_docs)]
 impl SubtleCrypto {
     pub fn encrypt(
-        algorithm: impl EncryptAlgorithm, key: CryptoKey, data: TypedArray<u8>,
-    ) -> PromiseFuture<TypedArray<u8>> {
-
-
+        &self, algorithm: impl EncryptAlgorithm, key: CryptoKey, data: TypedArray<u8>,
+    ) -> Promise {
+        unsafe {
+            js!(
+                return @{self}.encrypt(@{algorithm.into()}, @{key}, @{data})
+            ).into_reference_unchecked().unwrap()
+        }
     }
 
     pub fn decrypt(
-        algorithm: impl EncryptAlgorithm, key: CryptoKey, data: TypedArray<u8>,
-    ) -> PromiseFuture<TypedArray<u8>> {
-
-
+        &self, algorithm: impl EncryptAlgorithm, key: CryptoKey, data: TypedArray<u8>,
+    ) -> Promise {
+        unsafe {
+            js!(
+                return @{self}.decrypt(@{algorithm.into()}, @{key}, @{data})
+            ).into_reference_unchecked().unwrap()
+        }
     }
 
     pub fn sign(
-        algorithm: impl SignAlgorithm, key: CryptoKey, data: TypedArray<u8>,
-    ) -> PromiseFuture<TypedArray<u8>> {
-
+        &self, algorithm: impl SignAlgorithm, key: CryptoKey, data: TypedArray<u8>,
+    ) -> Promise {
+        unsafe {
+            js!(
+                return @{self}.sign(@{algorithm.into()}, @{key}, @{data})
+            ).into_reference_unchecked().unwrap()
+        }
     }
 
-
     pub fn verify(
-        algorithm: impl SignAlgorithm, key: CryptoKey,
+        &self, algorithm: impl SignAlgorithm, key: CryptoKey,
         signature: TypedArray<u8>, data: TypedArray<u8>,
-    ) -> PromiseFuture<bool> {
-
+    ) -> Promise {
+        unsafe {
+            js!(
+                return @{self}.verify(
+                    @{algorithm.into()}, @{key},
+                    @{signature}, @{data}
+                )
+            ).into_reference_unchecked().unwrap()
+        }
     }
 
     pub fn digest(
-        algorithm: impl DigestAlgorithm, data: TypedArray<u8>,
-    ) -> PromiseFuture<TypedArray> {
-
+        &self, algorithm: impl DigestAlgorithm, data: TypedArray<u8>,
+    ) -> Promise {
+        unsafe {
+            js!(
+                return @{self}.digest(@{algorithm.into()}, @{data})
+            ).into_reference_unchecked().unwrap()
+        }
     }
 
     pub fn generate_key(
-        algorithm: impl KeyedAlgorithm, extractable: bool, usages: &[KeyUsage],
-    ) -> PromiseFuture<CryptoKey> {
-
+        &self, algorithm: impl KeyedAlgorithm, extractable: bool, usages: &[KeyUsage],
+    ) -> Promise {
+        unimplemented!();
     }
 
     pub fn derive_key(
-        algorithm: impl DeriveAlgorithm, base_key: CryptoKey,
+        &self, algorithm: impl DeriveAlgorithm, base_key: CryptoKey,
         derived_key_type: impl KeyedAlgorithm,
         extractable: bool, usages: &[KeyUsage],
-    ) -> PromiseFuture<CryptoKey> {
-
+    ) -> Promise {
+        unimplemented!();
     }
 
     pub fn derive_bits(
-        algorithm: impl DeriveAlgorithm, base_key: CryptoKey, length: usize,
+        &self, algorithm: impl DeriveAlgorithm, base_key: CryptoKey, length: usize,
     ) -> Promise {
-
+        unimplemented!();
     }
 
     pub fn import_key_from_buffer(
-        data: TypedArray<u8>, algorithm: AlgorithmIdentifier,
+        &self, data: TypedArray<u8>, algorithm: impl KeyedAlgorithm,
         extractable: bool, usages: &[KeyUsage],
     ) -> Promise {
-
+        unimplemented!();
     }
 
     pub fn import_key_from_json(
-        data: Reference, algorithm: AlgorithmIdentifier,
+        &self, data: Reference, algorithm: impl KeyedAlgorithm,
         extractable: bool, usages: &[KeyUsage],
     ) -> Promise {
-
+        unimplemented!();
     }
 
-    pub fn export_key_to_buffer(key: CryptoKey) -> Promise {
-
+    pub fn export_key_to_buffer(&self, key: CryptoKey) -> Promise {
+        unimplemented!();
     }
 
-    pub fn export_key_to_json(key: CryptoKey) -> Promise {
-
+    pub fn export_key_to_json(&self, key: CryptoKey) -> Promise {
+        unimplemented!();
     }
-
-    pub fn wrap_key(
-
-
 }
 
 
